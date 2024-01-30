@@ -1,0 +1,20 @@
+* Brainfuck Just in Time Compiler
+
+That's a simple just in time compiler, that's a weekend project (that took more than a weekend).
+
+** Usage
+
+The following command will execute the provided brainfuck code, in the repo you can find two examples, one that adds two number and print the result and the other one is a classic HelloWorld!
+
+```bash
+cargo run <name_file>
+```
+
+** How it works
+
+TODO
+
+
+* Last but not least I wanna thanks me for beliving in me
+
+no joking, thanks to Tsoding and his [[youtube:https://www.youtube.com/watch?v=mbFY3Rwv7XM&t=462s][video]] where I took inspiration from
