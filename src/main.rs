@@ -14,15 +14,17 @@ fn main() -> anyhow::Result<()> {
 
     // tokenize the input
     let tokens = tokenizer::tokenize(&code)?;
-    println!("{:?}", tokens);
+    //println!("{:?}", tokens);
 
     // parse the instructions
     let instructions = parser::parse(tokens)?;
-    println!("{:#?}", instructions);
+    //println!("{:#?}", instructions);
+
+    // construct the jit and compile the code
+    let mut jit = jit::JIT::new(instructions)?;
 
     // execute the code
-    let mut jit = jit::JIT::new()?;
-    jit.execute(instructions);
+    jit.execute();
 
     Ok(())
 }

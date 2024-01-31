@@ -11,6 +11,7 @@ pub struct JIT {
     code_assembler: CodeAssembler,
     data_label: CodeLabel,
     code: Vec<u8>,
+    code_pointer: u64,
     // memory that will be handled by the code,
     // data label will point to half of this vector
     // at the start of the bf code
@@ -18,60 +19,61 @@ pub struct JIT {
 }
 
 impl JIT {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(instructions: Vec<Instruction>) -> anyhow::Result<Self> {
         let memory = Box::new(vec![0u8; 1024]);
         let mut code_assembler = CodeAssembler::new(64).unwrap();
         let data_label = code_assembler.create_label();
 
-        let jit = JIT {
+        let max_code_size = 4 * 1024;
+        let mut jit = JIT {
             code_assembler,
             data_label,
             memory,
             code: vec![],
+            code_pointer: unsafe {
+                nix::sys::mman::mmap(
+                    None,
+                    (max_code_size).try_into().unwrap(),
+                    nix::sys::mman::ProtFlags::PROT_READ
+                        | nix::sys::mman::ProtFlags::PROT_WRITE
+                        | nix::sys::mman::ProtFlags::PROT_EXEC,
+                    nix::sys::mman::MapFlags::MAP_PRIVATE | nix::sys::mman::MapFlags::MAP_ANONYMOUS,
+                    -1,
+                    0,
+                )
+                .unwrap() as u64
+            },
         };
 
-        Ok(jit)
-    }
-
-    pub fn execute(&mut self, instructions: Vec<Instruction>) {
         // the following is super bad, super wrong and makes the compilation
         // 2n instead of n, it is also ugly code wise.... but I just want to see it working
-
         let mut labels: Vec<CodeLabel> = instructions
             .iter()
             .filter_map(|i| {
                 i.get_name()
-                    .and_then(|_| Some(self.code_assembler.create_label()))
+                    .and_then(|_| Some(jit.code_assembler.create_label()))
             })
             .collect();
 
         for instruction in instructions {
-            self.append_code(instruction, &mut labels);
+            jit.append_code(instruction, &mut labels);
         }
 
-        unsafe {
-            let max_code_size = 4 * 1024;
-            let code_pointer = nix::sys::mman::mmap(
-                None,
-                (max_code_size).try_into().unwrap(),
-                nix::sys::mman::ProtFlags::PROT_READ
-                    | nix::sys::mman::ProtFlags::PROT_WRITE
-                    | nix::sys::mman::ProtFlags::PROT_EXEC,
-                nix::sys::mman::MapFlags::MAP_PRIVATE | nix::sys::mman::MapFlags::MAP_ANONYMOUS,
-                -1,
-                0,
-            )
+        jit.code = jit
+            .code_assembler
+            .assemble(jit.code_pointer as u64)
             .unwrap();
 
-            let bytes = self.code_assembler.assemble(code_pointer as u64).unwrap();
-            let code_size = bytes.len();
+        Ok(jit)
+    }
 
-            Self::print_code(&bytes);
+    pub fn execute(&mut self) {
+        unsafe {
+            let code =
+                slice::from_raw_parts_mut(&mut *(self.code_pointer as *mut u8), self.code.len());
+            code.copy_from_slice(&self.code);
 
-            let code = slice::from_raw_parts_mut(&mut *(code_pointer as *mut u8), code_size);
-            code.copy_from_slice(&bytes);
-
-            let fun: extern "C" fn() = core::mem::transmute(code_pointer);
+            let fun: extern "C" fn() = core::mem::transmute(self.code_pointer);
             fun();
         }
     }
@@ -136,7 +138,6 @@ impl JIT {
             self.code_assembler
                 .set_label(&mut labels[label_id as usize])
                 .unwrap();
-            println!("added label {}, at instruction {:?}", label_id, instruction);
         }
 
         match instruction {
@@ -156,10 +157,10 @@ impl JIT {
         }
     }
 
-    fn print_code(bytes: &Vec<u8>) {
+    pub fn print_code(&self) {
         use iced_x86::*;
 
-        let mut decoder = Decoder::new(64, bytes, DecoderOptions::NONE);
+        let mut decoder = Decoder::new(64, &self.code, DecoderOptions::NONE);
 
         let mut formatter = GasFormatter::new();
 
@@ -178,7 +179,6 @@ impl JIT {
             // Format the instruction ("disassemble" it)
             output.clear();
             formatter.format(&instruction, &mut output);
-            println!(" {}", output);
         }
     }
 }
