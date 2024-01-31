@@ -31,7 +31,6 @@ pub enum Op {
 
 #[derive(fmt::Debug, PartialEq)]
 pub enum Branch {
-    // TODO: probably those two will need to carry the next information
     JumpZero,
     JumpNotZero,
 }
